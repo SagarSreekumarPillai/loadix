@@ -1,0 +1,86 @@
+version: '3.8'
+
+services:
+  # MongoDB Database
+  mongodb:
+    image: mongo:7.0
+    container_name: lodix-mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: lodix123
+      MONGO_INITDB_DATABASE: lodix
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+      - ./scripts/mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+    networks:
+      - lodix-network
+
+  # Backend API Service
+  backend:
+    build:
+      context: ./apps/backend
+      dockerfile: Dockerfile
+    container_name: lodix-backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      PORT: 3001
+      MONGODB_URI: mongodb://admin:lodix123@mongodb:27017/lodix?authSource=admin
+      FRONTEND_URL: http://localhost:3000
+    ports:
+      - "3001:3001"
+    depends_on:
+      - mongodb
+    volumes:
+      - ./apps/backend:/app
+      - /app/node_modules
+    networks:
+      - lodix-network
+    command: npm run dev
+
+  # AI Service
+  ai-service:
+    build:
+      context: ./apps/ai-service
+      dockerfile: Dockerfile
+    container_name: lodix-ai-service
+    restart: unless-stopped
+    environment:
+      PYTHONPATH: /app
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./apps/ai-service:/app
+    networks:
+      - lodix-network
+    command: uvicorn main:app --host 0.0.0.0 --port 8001 --reload
+
+  # Frontend (Development)
+  frontend:
+    build:
+      context: ./apps/frontend
+      dockerfile: Dockerfile
+    container_name: lodix-frontend
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:3001
+      NEXT_PUBLIC_AI_SERVICE_URL: http://localhost:8001
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./apps/frontend:/app
+      - /app/node_modules
+      - /app/.next
+    networks:
+      - lodix-network
+    command: npm run dev
+
+volumes:
+  mongodb_data:
+
+networks:
+  lodix-network:
+    driver: bridge

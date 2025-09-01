@@ -1,0 +1,159 @@
+name: Lodix CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  # Lint and test frontend
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./apps/frontend
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: './apps/frontend/package-lock.json'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Run linter
+      run: npm run lint
+    
+    - name: Run type check
+      run: npm run build
+    
+    - name: Run tests
+      run: npm test
+
+  # Lint and test backend
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./apps/backend
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: './apps/backend/package-lock.json'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Run linter
+      run: npm run lint
+    
+    - name: Run type check
+      run: npm run build
+    
+    - name: Run tests
+      run: npm test
+
+  # Test AI service
+  ai-service:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./apps/ai-service
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Run type check
+      run: |
+        python -m mypy main.py --ignore-missing-imports
+    
+    - name: Test AI service
+      run: |
+        python -c "import main; print('AI service imports successfully')"
+
+  # Build and push Docker images
+  docker:
+    needs: [frontend, backend, ai-service]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Login to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+    
+    - name: Build and push frontend
+      uses: docker/build-push-action@v5
+      with:
+        context: ./apps/frontend
+        push: true
+        tags: ${{ secrets.DOCKER_USERNAME }}/lodix-frontend:latest
+    
+    - name: Build and push backend
+      uses: docker/build-push-action@v5
+      with:
+        context: ./apps/backend
+        push: true
+        tags: ${{ secrets.DOCKER_USERNAME }}/lodix-backend:latest
+    
+    - name: Build and push AI service
+      uses: docker/build-push-action@v5
+      with:
+        context: ./apps/ai-service
+        push: true
+        tags: ${{ secrets.DOCKER_USERNAME }}/lodix-ai-service:latest
+
+  # Deploy to staging
+  deploy-staging:
+    needs: [docker]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/develop'
+    environment: staging
+    
+    steps:
+    - name: Deploy to staging
+      run: |
+        echo "Deploying to staging environment..."
+        # Add your staging deployment commands here
+
+  # Deploy to production
+  deploy-production:
+    needs: [docker]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    environment: production
+    
+    steps:
+    - name: Deploy to production
+      run: |
+        echo "Deploying to production environment..."
+        # Add your production deployment commands here
