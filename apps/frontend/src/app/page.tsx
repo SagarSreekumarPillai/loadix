@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import Link from "next/link"
 
 export default function Home() {
   return (
@@ -22,12 +23,16 @@ export default function Home() {
             and EU compliance automation. Reduce costs, improve efficiency, and stay ahead of regulations.
           </p>
           <div className="flex flex-col gap-4 sm:flex-row sm:justify-center">
-            <Button size="lg" className="bg-blue-600 hover:bg-blue-700">
-              Get Started
-            </Button>
-            <Button size="lg" variant="outline">
-              View Demo
-            </Button>
+            <Link href="/dashboard">
+              <Button size="lg" className="bg-blue-600 hover:bg-blue-700">
+                Go to Dashboard
+              </Button>
+            </Link>
+            <Link href="/orders/new">
+              <Button size="lg" variant="outline">
+                Create Order
+              </Button>
+            </Link>
           </div>
         </div>
       </section>
@@ -108,6 +113,42 @@ export default function Home() {
         </div>
       </section>
 
+      {/* Quick Actions Section */}
+      <section className="px-4 py-20 bg-white">
+        <div className="mx-auto max-w-4xl text-center">
+          <h2 className="mb-8 text-3xl font-bold text-slate-900">
+            Ready to Get Started?
+          </h2>
+          <div className="grid gap-6 md:grid-cols-2">
+            <Card className="border-0 shadow-lg hover:shadow-xl transition-shadow">
+              <CardContent className="p-6">
+                <div className="text-4xl mb-4">📊</div>
+                <h3 className="text-xl font-semibold mb-2">View Dashboard</h3>
+                <p className="text-gray-600 mb-4">
+                  Monitor your logistics operations with real-time insights and analytics
+                </p>
+                <Link href="/dashboard">
+                  <Button className="w-full">Go to Dashboard</Button>
+                </Link>
+              </CardContent>
+            </Card>
+            
+            <Card className="border-0 shadow-lg hover:shadow-xl transition-shadow">
+              <CardContent className="p-6">
+                <div className="text-4xl mb-4">📋</div>
+                <h3 className="text-xl font-semibold mb-2">Create Order</h3>
+                <p className="text-gray-600 mb-4">
+                  Start a new logistics order with our comprehensive form
+                </p>
+                <Link href="/orders/new">
+                  <Button className="w-full">Create Order</Button>
+                </Link>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </section>
+
       {/* CTA Section */}
       <section className="px-4 py-20 bg-slate-900">
         <div className="mx-auto max-w-4xl text-center">
@@ -117,9 +158,18 @@ export default function Home() {
           <p className="mb-8 text-lg text-slate-300">
             Join leading EU logistics companies already using Lodix to optimize their operations
           </p>
-          <Button size="lg" className="bg-blue-600 hover:bg-blue-700">
-            Start Free Trial
-          </Button>
+          <div className="flex flex-col gap-4 sm:flex-row sm:justify-center">
+            <Link href="/dashboard">
+              <Button size="lg" className="bg-blue-600 hover:bg-blue-700">
+                Start Using Lodix
+              </Button>
+            </Link>
+            <Link href="/orders/new">
+              <Button size="lg" variant="outline">
+                Create Your First Order
+              </Button>
+            </Link>
+          </div>
         </div>
       </section>
     </div>

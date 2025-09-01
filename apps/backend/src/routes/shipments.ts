@@ -1,15 +1,44 @@
 import { Router, Request, Response } from 'express';
+import { Shipment } from '../models/Shipment';
+import { Order } from '../models/Order';
 import { createError } from '../middleware/errorHandler';
 
 const router = Router();
 
-// GET /api/shipments - Get all shipments
+// GET /api/shipments - Get all shipments with pagination and filtering
 router.get('/', async (req: Request, res: Response) => {
   try {
-    // TODO: Implement shipment retrieval logic
+    const { page = 1, limit = 10, status, carrierId, country } = req.query;
+    const skip = (Number(page) - 1) * Number(limit);
+    
+    // Build filter object
+    const filter: any = {};
+    if (status) filter.status = status;
+    if (carrierId) filter['carrier.id'] = carrierId;
+    if (country) {
+      filter.$or = [
+        { 'origin.country': country },
+        { 'destination.country': country }
+      ];
+    }
+    
+    const shipments = await Shipment.find(filter)
+      .populate('orderId', 'orderNumber shipper consignee cargo')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(Number(limit))
+      .lean();
+    
+    const total = await Shipment.countDocuments(filter);
+    
     res.json({
-      message: 'Shipments endpoint - to be implemented',
-      timestamp: new Date().toISOString()
+      shipments,
+      pagination: {
+        page: Number(page),
+        limit: Number(limit),
+        total,
+        pages: Math.ceil(total / Number(limit))
+      }
     });
   } catch (error) {
     throw createError('Failed to fetch shipments', 500);
@@ -19,21 +48,67 @@ router.get('/', async (req: Request, res: Response) => {
 // POST /api/shipments - Create new shipment
 router.post('/', async (req: Request, res: Response) => {
   try {
-    const { orderId, origin, destination, cargo, carrier } = req.body;
+    const {
+      orderId,
+      carrier,
+      origin,
+      destination,
+      waypoints,
+      route,
+      estimatedPickup,
+      estimatedDelivery
+    } = req.body;
     
-    // TODO: Implement shipment creation logic
-    // TODO: Validate required fields
-    // TODO: Calculate route and ETA
-    // TODO: Assign tracking number
+    // Validate required fields
+    if (!orderId || !carrier || !origin || !destination || !estimatedPickup || !estimatedDelivery) {
+      throw createError('Missing required fields', 400);
+    }
+    
+    // Verify order exists
+    const order = await Order.findById(orderId);
+    if (!order) {
+      throw createError('Order not found', 404);
+    }
+    
+    // Create new shipment
+    const shipment = new Shipment({
+      orderId,
+      carrier,
+      origin,
+      destination,
+      waypoints: waypoints || [],
+      route: route || {
+        totalDistance: 0,
+        estimatedDuration: 0,
+        estimatedCost: 0,
+        co2Footprint: 0,
+        routePolyline: []
+      },
+      estimatedPickup: new Date(estimatedPickup),
+      estimatedDelivery: new Date(estimatedDelivery),
+      status: 'pending',
+      trackingEvents: []
+    });
+    
+    await shipment.save();
+    
+    // Update order status
+    await Order.findByIdAndUpdate(orderId, { status: 'processing' });
     
     res.status(201).json({
       message: 'Shipment created successfully',
-      shipmentId: 'temp-shipment-id',
-      trackingNumber: 'temp-tracking-number',
-      estimatedDelivery: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-      timestamp: new Date().toISOString()
+      shipment: {
+        id: shipment._id,
+        shipmentNumber: shipment.shipmentNumber,
+        status: shipment.status,
+        estimatedDelivery: shipment.estimatedDelivery,
+        createdAt: shipment.createdAt
+      }
     });
-  } catch (error) {
+  } catch (error: any) {
+    if (error.statusCode) {
+      throw error;
+    }
     throw createError('Failed to create shipment', 500);
   }
 });
@@ -43,33 +118,76 @@ router.get('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     
-    // TODO: Implement shipment retrieval by ID
-    res.json({
-      message: `Shipment ${id} details - to be implemented`,
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
+    const shipment = await Shipment.findById(id)
+      .populate('orderId', 'orderNumber shipper consignee cargo')
+      .lean();
+    
+    if (!shipment) {
+      throw createError('Shipment not found', 404);
+    }
+    
+    res.json({ shipment });
+  } catch (error: any) {
+    if (error.statusCode) {
+      throw error;
+    }
     throw createError('Failed to fetch shipment', 500);
   }
 });
 
-// PUT /api/shipments/:id - Update shipment status
+// PUT /api/shipments/:id - Update shipment
 router.put('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { status, location, notes } = req.body;
+    const updateData = req.body;
     
-    // TODO: Implement shipment update logic
-    // TODO: Validate status transitions
-    // TODO: Log status changes
+    // Remove fields that shouldn't be updated
+    delete updateData.shipmentNumber;
+    delete updateData.orderId;
+    delete updateData.createdAt;
+    delete updateData.updatedAt;
+    
+    const shipment = await Shipment.findByIdAndUpdate(
+      id,
+      { ...updateData, updatedAt: new Date() },
+      { new: true, runValidators: true }
+    ).populate('orderId', 'orderNumber shipper consignee cargo').lean();
+    
+    if (!shipment) {
+      throw createError('Shipment not found', 404);
+    }
     
     res.json({
-      message: `Shipment ${id} status updated successfully`,
-      newStatus: status,
-      timestamp: new Date().toISOString()
+      message: 'Shipment updated successfully',
+      shipment
     });
-  } catch (error) {
+  } catch (error: any) {
+    if (error.statusCode) {
+      throw error;
+    }
     throw createError('Failed to update shipment', 500);
+  }
+});
+
+// DELETE /api/shipments/:id - Delete shipment
+router.delete('/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    
+    const shipment = await Shipment.findByIdAndDelete(id);
+    if (!shipment) {
+      throw createError('Shipment not found', 404);
+    }
+    
+    res.json({
+      message: 'Shipment deleted successfully',
+      shipmentId: id
+    });
+  } catch (error: any) {
+    if (error.statusCode) {
+      throw error;
+    }
+    throw createError('Failed to delete shipment', 500);
   }
 });
 
@@ -78,12 +196,25 @@ router.get('/:id/tracking', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     
-    // TODO: Implement tracking information retrieval
+    const shipment = await Shipment.findById(id)
+      .select('shipmentNumber status trackingEvents estimatedDelivery actualDelivery')
+      .lean();
+    
+    if (!shipment) {
+      throw createError('Shipment not found', 404);
+    }
+    
     res.json({
-      message: `Tracking info for shipment ${id} - to be implemented`,
-      timestamp: new Date().toISOString()
+      shipmentNumber: shipment.shipmentNumber,
+      status: shipment.status,
+      trackingEvents: shipment.trackingEvents,
+      estimatedDelivery: shipment.estimatedDelivery,
+      actualDelivery: shipment.actualDelivery
     });
-  } catch (error) {
+  } catch (error: any) {
+    if (error.statusCode) {
+      throw error;
+    }
     throw createError('Failed to fetch tracking information', 500);
   }
 });
@@ -92,18 +223,84 @@ router.get('/:id/tracking', async (req: Request, res: Response) => {
 router.post('/:id/tracking', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { status, location, timestamp, notes } = req.body;
+    const { status, location, notes, updatedBy } = req.body;
     
-    // TODO: Implement tracking update logic
-    // TODO: Validate location data
-    // TODO: Calculate ETA updates
+    if (!status || !location || !updatedBy) {
+      throw createError('Status, location, and updatedBy are required', 400);
+    }
+    
+    const trackingEvent = {
+      status,
+      location: {
+        ...location,
+        timestamp: new Date()
+      },
+      timestamp: new Date(),
+      notes,
+      updatedBy
+    };
+    
+    const shipment = await Shipment.findByIdAndUpdate(
+      id,
+      {
+        $push: { trackingEvents: trackingEvent },
+        status,
+        updatedAt: new Date()
+      },
+      { new: true, runValidators: true }
+    ).lean();
+    
+    if (!shipment) {
+      throw createError('Shipment not found', 404);
+    }
     
     res.status(201).json({
-      message: `Tracking update added for shipment ${id}`,
-      timestamp: new Date().toISOString()
+      message: 'Tracking update added successfully',
+      trackingEvent,
+      newStatus: status
     });
-  } catch (error) {
+  } catch (error: any) {
+    if (error.statusCode) {
+      throw error;
+    }
     throw createError('Failed to add tracking update', 500);
+  }
+});
+
+// PATCH /api/shipments/:id/status - Update shipment status
+router.patch('/:id/status', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    
+    if (!status) {
+      throw createError('Status is required', 400);
+    }
+    
+    const shipment = await Shipment.findByIdAndUpdate(
+      id,
+      { status, updatedAt: new Date() },
+      { new: true, runValidators: true }
+    ).lean();
+    
+    if (!shipment) {
+      throw createError('Shipment not found', 404);
+    }
+    
+    res.json({
+      message: 'Shipment status updated successfully',
+      shipment: {
+        id: shipment._id,
+        shipmentNumber: shipment.shipmentNumber,
+        status: shipment.status,
+        updatedAt: shipment.updatedAt
+      }
+    });
+  } catch (error: any) {
+    if (error.statusCode) {
+      throw error;
+    }
+    throw createError('Failed to update shipment status', 500);
   }
 });
 

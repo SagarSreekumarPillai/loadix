@@ -7,6 +7,7 @@ import { connectDB } from './config/database';
 import { errorHandler } from './middleware/errorHandler';
 import shipmentRoutes from './routes/shipments';
 import orderRoutes from './routes/orders';
+import carrierRoutes from './routes/carriers';
 import healthRoutes from './routes/health';
 
 // Load environment variables
@@ -32,6 +33,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/api/health', healthRoutes);
 app.use('/api/shipments', shipmentRoutes);
 app.use('/api/orders', orderRoutes);
+app.use('/api/carriers', carrierRoutes);
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -60,6 +62,7 @@ app.listen(PORT, () => {
   console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
   console.log(`📦 Shipments API: http://localhost:${PORT}/api/shipments`);
   console.log(`📋 Orders API: http://localhost:${PORT}/api/orders`);
+  console.log(`🚛 Carriers API: http://localhost:${PORT}/api/carriers`);
 });
 
 export default app;
